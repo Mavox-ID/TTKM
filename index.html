@@ -94,109 +94,61 @@
 
         function initChart() {
             const ctx = document.getElementById('monthlyChart').getContext('2d');
-            
             chartInstance = new Chart(ctx, {
                 type: 'line',
-                data: {
-                    labels: [],
-                    datasets: [{
-                        label: 'Total Requests',
-                        data: [],
-                        borderColor: '#3b82f6',
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                        borderWidth: 3,
-                        pointBackgroundColor: '#ffffff',
-                        pointBorderColor: '#3b82f6',
-                        pointBorderWidth: 2,
-                        pointRadius: 4,
-                        pointHoverRadius: 6,
-                        fill: true,
-                        tension: 0.4
-                    }]
-                },
+                data: { labels: [], datasets: [{
+                    label: 'Total Requests',
+                    data: [],
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    borderWidth: 3,
+                    pointBackgroundColor: '#ffffff',
+                    pointBorderColor: '#3b82f6',
+                    pointRadius: 4,
+                    fill: true,
+                    tension: 0.4
+                }]},
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                            padding: 12,
-                            titleFont: { size: 14 },
-                            bodyFont: { size: 14 },
-                            displayColors: false,
-                            callbacks: {
-                                title: function(context) { return context[0].label + ' число'; },
-                                label: function(context) { return context.parsed.y.toLocaleString('ru-RU') + ' запросов'; }
-                            }
-                        }
-                    },
+                    plugins: { legend: { display: false } },
                     scales: {
-                        x: {
-                            grid: { display: false, drawBorder: false },
-                            ticks: { color: '#64748b', font: { family: 'Inter' } }
-                        },
-                        y: {
-                            grid: { color: '#f1f5f9', drawBorder: false },
-                            ticks: { 
-                                color: '#64748b', 
-                                font: { family: 'Inter' },
-                                callback: function(value) {
-                                    if(value >= 1000) return (value / 1000).toFixed(1) + 'k';
-                                    return value;
-                                }
-                            },
-                            beginAtZero: true
-                        }
-                    },
-                    interaction: {
-                        intersect: false,
-                        mode: 'index',
-                    },
+                        y: { beginAtZero: true, grid: { color: '#f1f5f9' } },
+                        x: { grid: { display: false } }
+                    }
                 }
             });
         }
 
         async function fetchMonthlyStats() {
             try {
-
                 const response = await fetch(`${WORKER_URL}/api/stats`);
                 const data = await response.json();
-                
                 updateChart(data);
-                
             } catch (error) {
-                console.error('Error loading data:', error);
+                console.error('Error loading stats:', error);
             }
         }
 
         function updateChart(data) {
             const dateParts = data.month.split('-');
-            const date = new Date(dateParts[0], dateParts[1] - 1);
-            const monthName = date.toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
-            document.getElementById('month-name').innerText = monthName.charAt(0).toUpperCase() + monthName.slice(1);
-
-            const daysInMonth = new Date(dateParts[0], dateParts[1], 0).getDate();
+            const year = parseInt(dateParts[0]);
+            const month = parseInt(dateParts[1]);
+            const date = new Date(year, month - 1);
             
+            document.getElementById('month-name').innerText = date.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+
             const labels = [];
             const chartData = [];
+            const currentDay = parseInt(data.currentDay);
 
-            let todayTotal = 0;
-            const currentDay = new Date().getDate().toString().padStart(2, '0');
-
-            for (let i = 1; i <= daysInMonth; i++) {
+            for (let i = 1; i <= currentDay; i++) {
                 const dayStr = i.toString().padStart(2, '0');
-                labels.push(i);
-                
-                const count = data.stats[dayStr] || 0;
-                chartData.push(count);
-
-                if (dayStr === currentDay) {
-                    todayTotal = count;
-                }
+                labels.push(i + ' ' + date.toLocaleString('en-US', { month: 'short' }));
+                chartData.push(data.stats[dayStr] || 0);
             }
 
-            document.getElementById('today-requests').innerText = todayTotal.toLocaleString('ru-RU');
+            document.getElementById('today-requests').innerText = (data.stats[data.currentDay] || 0).toLocaleString();
 
             chartInstance.data.labels = labels;
             chartInstance.data.datasets[0].data = chartData;
@@ -204,45 +156,34 @@
         }
 
         async function pollRPS() {
-            if(!WORKER_URL) return;
-
             try {
                 const response = await fetch(`${WORKER_URL}/api/stats/today`);
                 const data = await response.json();
-                
                 const currentCount = data.count;
                 const currentTime = Date.now();
 
-                document.getElementById('today-requests').innerText = currentCount.toLocaleString('ru-RU');
+                document.getElementById('today-requests').innerText = currentCount.toLocaleString();
 
                 if (lastCount !== null && lastTime !== null) {
                     const timeDiff = (currentTime - lastTime) / 1000;
                     const countDiff = currentCount - lastCount;
-                    
-                    let rps = 0;
-                    if (timeDiff > 0 && countDiff > 0) {
-                        rps = Math.round(countDiff / timeDiff);
-                    }
-                    
-                    document.getElementById('current-rps').innerText = rps.toLocaleString('ru-RU');
+                    let rps = (timeDiff > 0 && countDiff >= 0) ? Math.round(countDiff / timeDiff) : 0;
+                    document.getElementById('current-rps').innerText = rps.toLocaleString();
                 }
 
                 lastCount = currentCount;
                 lastTime = currentTime;
-
             } catch (error) {
-                console.error('Error get RPS:', error);
+                console.error('RPS Error:', error);
             }
         }
 
         document.addEventListener('DOMContentLoaded', () => {
             initChart();
             fetchMonthlyStats();
-            
-            setInterval(fetchMonthlyStats, 30000);
-            setInterval(pollRPS, 1000);
+            setInterval(fetchMonthlyStats, 15000);
+            setInterval(pollRPS, 2000);
         });
-
     </script>
 </body>
 </html>
